@@ -1,0 +1,96 @@
+public class BlobStorageService : IBlobStorageService
+{
+    private readonly BlobServiceClient _blobServiceClient;
+
+    public BlobStorageService(BlobServiceClient blobServiceClient)
+    {
+        _blobServiceClient = blobServiceClient;
+    }
+
+    public async Task StoreAsync(string containerName, string fileName, Stream content)
+    {
+        var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
+        await containerClient.CreateIfNotExistsAsync();
+
+        var blobClient = containerClient.GetBlobClient(fileName);
+        await blobClient.UploadAsync(content, true);
+    }
+
+    public  async Task<byte[]> RetrieveAsync(string containerName, string fileName)
+    {
+        try
+        {
+            var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
+            await containerClient.CreateIfNotExistsAsync();
+
+            var blobClient = containerClient.GetBlobClient(fileName);
+            var response = await blobClient.DownloadContentAsync();
+            return response.Value.Content.ToArray();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, ex.Message);
+        }
+        return null;
+    }
+
+    public async Task<bool> DeleteAsync(string containerName, string fileName)
+    {
+        var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
+        await containerClient.CreateIfNotExistsAsync();
+
+        var blobClient = containerClient.GetBlobClient(fileName);
+        var response = await blobClient.DeleteIfExistsAsync();
+        return response;
+    }
+
+    public async Task<bool> BlobExistsAsync(string containerName, string fileName)
+    {
+        var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
+        await containerClient.CreateIfNotExistsAsync();
+
+        var blobClient = containerClient.GetBlobClient(fileName);
+        return await blobClient.ExistsAsync();
+    }
+
+    public async Task<List<(string BlobName, DateTimeOffset? CreatedOn)>> ContainerBlobsAsync(string containerName)
+    {
+        var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
+        await containerClient.CreateIfNotExistsAsync();
+
+        var blobNames = new List<(string BlobName, DateTimeOffset? CreatedOn)>();
+        await foreach (BlobItem blobItem in containerClient.GetBlobsAsync())
+        {
+            blobNames.Add((blobItem.Name, blobItem.Properties.CreatedOn));
+        }
+        return blobNames;
+    }
+}
+
+----------------------------------------------------------------------------------------------
+
+Code that will add data in azure blob storage:
+	string json = JsonConvert.SerializeObject(model);
+	byte[] byteArray = System.Text.Encoding.UTF8.GetBytes(json);
+	using MemoryStream stream = new MemoryStream(byteArray);
+	await _blobService.StoreAsync("containerName", "my.json", stream);
+	
+----------------------------------------------------------------------------------------------
+
+Code that will retrieve data from azure blob storage:
+	var byteArray2 = await _blobService.RetrieveAsync("containerName", "my.json");
+	string jsonStr = System.Text.Encoding.UTF8.GetString(byteArray2);
+	return JsonConvert.DeserializeObject<MyModel>(jsonStr);
+	
+----------------------------------------------------------------------------------------------
+
+Code that will delete data from azure blob storage:
+	_blobService.DeleteAsync("containerName", "my.json");
+	
+----------------------------------------------------------------------------------------------
+
+Code that will check data exist in azure blob storage:
+	_blobService.BlobExistsAsync("containerName", "my.json")
+	
+	
+	
